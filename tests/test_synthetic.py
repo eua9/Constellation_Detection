@@ -367,7 +367,7 @@ class TestSyntheticStarMapGenerator:
     def test_pandas_dataframe_support(self, generator):
         """Test that pandas DataFrame works as catalog input."""
         try:
-            import pandas as pd
+            import pandas as pd  # type: ignore
             
             df = pd.DataFrame({
                 "ra": [0.0, 0.01, 0.02],
