@@ -1,5 +1,5 @@
 from pathlib import Path
-from numpy import np
+import numpy as np
 import cv2
 
 class ImageDataset:
@@ -20,3 +20,4 @@ class ImageDataset:
         if img is None:
             raise FileNotFoundError(f"Image not found at {path}")
         return img
+
