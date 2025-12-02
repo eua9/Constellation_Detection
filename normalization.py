@@ -179,6 +179,41 @@ def normalize_points(points: np.ndarray) -> np.ndarray:
     return normalized
 
 
+def normalize_star_points(points: np.ndarray, scale_method: str = 'variance') -> np.ndarray:
+    """
+    Normalize star point coordinates by chaining centering, PCA rotation, and scale normalization.
+    
+    This function removes translation, rotation, and scale differences from a point set
+    by applying the normalization steps in sequence:
+    1. Center points (remove translation)
+    2. PCA align (remove rotation, ensure consistent orientation)
+    3. Normalize scale (remove scale differences)
+    
+    Args:
+        points: Array of shape (n_points, 2) with (x, y) coordinates
+        scale_method: Scaling method - 'variance' (default) or 'max_distance'
+    
+    Returns:
+        Normalized points array of shape (n_points, 2) that is translation,
+        rotation, and scale invariant
+    """
+    if len(points) == 0:
+        return points
+    
+    points = np.array(points)
+    
+    # Step 1: Center points (remove translation)
+    centered = center_points(points)
+    
+    # Step 2: PCA align (remove rotation, ensure consistent orientation)
+    aligned = pca_align(centered)
+    
+    # Step 3: Normalize scale (remove scale differences)
+    normalized = normalize_scale(aligned, method=scale_method)
+    
+    return normalized
+
+
 def normalize_star_set(centroids: List[Tuple[float, float]]) -> np.ndarray:
     """
     Normalize a list of star centroids.
