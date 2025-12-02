@@ -7,7 +7,18 @@
     {
       "name": "Orion",
       "path": "templates_data/orion.json"
+    },
+    {
+      "name": "Triangle",
+      "path": "templates_data/triangle.json"
+    },
+    {
+      "name": "Line",
+      "path": "templates_data/line.json"
+    },
+    {
+      "name": "L-Shape",
+      "path": "templates_data/l_shape.json"
     }
   ]
 }
-
