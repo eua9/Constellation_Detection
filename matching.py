@@ -17,6 +17,11 @@ def compute_ssd(query_points: np.ndarray, template_points: np.ndarray) -> float:
     This is a baseline matching algorithm. Both point sets should be normalized
     before calling this function.
 
+    Handles differing cardinality using a nearest neighbor matching strategy:
+    - Finds the closest template point for each query point
+    - Computes SSD using the matched pairs
+    - This allows matching even when point sets have different sizes
+
     Args:
         query_points: Normalized query points of shape (n_query, 2)
         template_points: Normalized template points of shape (n_template, 2)
@@ -27,22 +32,66 @@ def compute_ssd(query_points: np.ndarray, template_points: np.ndarray) -> float:
     if len(query_points) == 0 or len(template_points) == 0:
         return float('inf')
     
-    # Handle different sizes by using the minimum size
-    min_size = min(len(query_points), len(template_points))
+    # Strategy: For each query point, find nearest template point
+    # Compute squared distances between all pairs
+    # Shape: (n_query, n_template)
+    distances_squared = np.sum(
+        (query_points[:, np.newaxis, :] - template_points[np.newaxis, :, :]) ** 2,
+        axis=2
+    )
     
-    # Sort points for consistent comparison (by distance from origin)
-    query_sorted = sorted(query_points, key=lambda p: p[0]**2 + p[1]**2)
-    template_sorted = sorted(template_points, key=lambda p: p[0]**2 + p[1]**2)
+    # For each query point, find the nearest template point
+    min_distances_squared = np.min(distances_squared, axis=1)
     
-    # Compute SSD for the first min_size points
-    query_subset = np.array(query_sorted[:min_size])
-    template_subset = np.array(template_sorted[:min_size])
+    # SSD is the sum of squared distances from query points to their nearest template points
+    ssd = np.sum(min_distances_squared)
     
-    # Compute squared differences
-    diff = query_subset - template_subset
-    ssd = np.sum(diff ** 2)
+    # Normalize by number of query points to make score comparable across different sizes
+    ssd = ssd / len(query_points)
     
     return ssd
+
+
+def match_constellation_ssd(
+    query_points: np.ndarray,
+    templates: Dict[str, np.ndarray],
+    no_match_threshold: Optional[float] = None
+) -> Tuple[Optional[str], float]:
+    """
+    Match a normalized query point set to the best-matching template using SSD.
+
+    Args:
+        query_points: Normalized query points of shape (n_query, 2)
+        templates: Dictionary mapping constellation names to normalized template points
+        no_match_threshold: Optional threshold to declare "no match". If all SSD scores
+                          exceed this threshold, returns (None, best_score).
+
+    Returns:
+        Tuple of (best_matching_constellation_name, score).
+        If no_match_threshold is set and all scores exceed it, returns (None, best_score).
+    """
+    if len(templates) == 0:
+        raise ValueError("No templates provided for matching")
+    
+    if len(query_points) == 0:
+        return None, float('inf')
+    
+    best_match = None
+    best_score = float('inf')
+    
+    # Compute SSD for each template
+    for constellation_name, template_points in templates.items():
+        score = compute_ssd(query_points, template_points)
+        
+        if score < best_score:
+            best_score = score
+            best_match = constellation_name
+    
+    # Check if best score exceeds threshold
+    if no_match_threshold is not None and best_score > no_match_threshold:
+        return None, best_score
+    
+    return best_match, best_score
 
 
 def match_constellation(
