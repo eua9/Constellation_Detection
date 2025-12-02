@@ -9,10 +9,12 @@ This script demonstrates the basic pipeline:
 
 import numpy as np
 import matplotlib.pyplot as plt
+from typing import Optional, Tuple
 
 from star_detection import detect_stars, visualize_detection
-from normalization import normalize_star_set
-from matching import match_constellation
+from normalization import normalize_star_points
+from matching import match_constellation_ssd
+from templates import load_templates
 from synthetic_data import generate_synthetic_image, get_sample_templates
 from evaluate import evaluate_on_synthetic_data
 
@@ -103,6 +105,67 @@ def main():
     print("\n" + "=" * 60)
     print("Demo completed successfully!")
     print("=" * 60)
+
+
+def run_pipeline(
+    image: np.ndarray,
+    template_config_path: str = "templates_config.json",
+    detection_config: Optional[dict] = None,
+    no_match_threshold: Optional[float] = None,
+    visualize: bool = False
+) -> Tuple[Optional[str], float, np.ndarray]:
+    """
+    Run the end-to-end constellation detection pipeline.
+    
+    Steps:
+    1. Load image (passed as parameter)
+    2. Detect stars (FR2)
+    3. Normalize point set (FR3)
+    4. Load templates (FR4)
+    5. Run SSD-based matching (FR5)
+    
+    Args:
+        image: Input grayscale or color image (numpy array)
+        template_config_path: Path to template configuration file
+        detection_config: Optional configuration dict for star detection
+        no_match_threshold: Optional threshold to declare "no match" if all scores exceed it
+        visualize: If True, return detected centroids for visualization
+    
+    Returns:
+        Tuple of (best_match_name, score, detected_centroids)
+        - best_match_name: Name of best matching constellation (None if no match)
+        - score: SSD score of best match
+        - detected_centroids: Array of detected star centroids
+    """
+    # Step 1: Image is already loaded (passed as parameter)
+    
+    # Step 2: Detect stars (FR2)
+    if detection_config is None:
+        detection_config = {'intensity_threshold': 0.01}
+    
+    detected_centroids = detect_stars(image, config=detection_config)
+    
+    if len(detected_centroids) == 0:
+        print("Warning: No stars detected in image")
+        return None, float('inf'), detected_centroids
+    
+    # Step 3: Normalize point set (FR3)
+    normalized_query = normalize_star_points(detected_centroids)
+    
+    # Step 4: Load templates (FR4)
+    templates = load_templates(template_config_path)
+    
+    if len(templates) == 0:
+        raise ValueError(f"No templates found in {template_config_path}")
+    
+    # Step 5: Run SSD-based matching (FR5)
+    best_match, score = match_constellation_ssd(
+        normalized_query,
+        templates,
+        no_match_threshold=no_match_threshold
+    )
+    
+    return best_match, score, detected_centroids
 
 
 if __name__ == "__main__":
