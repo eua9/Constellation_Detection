@@ -1,0 +1,13 @@
+{
+  "templates": [
+    {
+      "name": "Big Dipper",
+      "path": "templates_data/big_dipper.json"
+    },
+    {
+      "name": "Orion",
+      "path": "templates_data/orion.json"
+    }
+  ]
+}
+
