@@ -76,6 +76,61 @@ def normalize_scale(points: np.ndarray, method: str = 'variance') -> np.ndarray:
     return scaled
 
 
+def pca_align(points: np.ndarray) -> np.ndarray:
+    """
+    Align points using PCA to ensure consistent orientation.
+    
+    This removes rotation differences by:
+    1. Computing principal components via PCA
+    2. Aligning the first principal component to the positive x-axis
+    3. Ensuring consistent orientation (positive determinant)
+    
+    Args:
+        points: Array of shape (n_points, 2) with (x, y) coordinates
+    
+    Returns:
+        Aligned points array of shape (n_points, 2) with consistent orientation
+    """
+    if len(points) == 0:
+        return points
+    
+    points = np.array(points)
+    
+    # Handle degenerate case (all points at origin or collinear)
+    if np.allclose(points, 0) or len(points) < 2:
+        return points
+    
+    # Compute covariance matrix
+    cov_matrix = np.cov(points.T)
+    
+    # Handle case where variance is zero (all points are the same)
+    if np.allclose(cov_matrix, 0):
+        return points
+    
+    # Get principal components via eigenvalue decomposition
+    eigenvals, eigenvecs = np.linalg.eigh(cov_matrix)
+    
+    # Sort by eigenvalue (descending order)
+    idx = eigenvals.argsort()[::-1]
+    eigenvals = eigenvals[idx]
+    eigenvecs = eigenvecs[:, idx]
+    
+    # Ensure consistent orientation:
+    # Make sure the first principal component points in the positive x direction
+    # (or positive y if x-component is very small)
+    if eigenvecs[0, 0] < 0:
+        eigenvecs[:, 0] = -eigenvecs[:, 0]
+    
+    # Ensure right-handed coordinate system (determinant = 1)
+    if np.linalg.det(eigenvecs) < 0:
+        eigenvecs[:, 1] = -eigenvecs[:, 1]
+    
+    # Project points onto principal components
+    aligned = points @ eigenvecs
+    
+    return aligned
+
+
 def normalize_points(points: np.ndarray) -> np.ndarray:
     """
     Normalize a set of 2D points for translation, rotation, and scale.
