@@ -1,0 +1,54 @@
+# Python virtual environment
+venv/
+env/
+ENV/
+.venv
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project specific
+*.png
+*.jpg
+*.jpeg
+demo_result.png
+
+# Test outputs (visualization images and test results)
+test_outputs/*
+!test_outputs/.gitkeep
+!test_outputs/README.md
+
+# Test inputs (if you add sample images here, uncomment the line below)
+# test_inputs/*
+
