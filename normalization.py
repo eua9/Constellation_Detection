@@ -35,6 +35,47 @@ def center_points(points: np.ndarray) -> np.ndarray:
     return centered
 
 
+def normalize_scale(points: np.ndarray, method: str = 'variance') -> np.ndarray:
+    """
+    Normalize scale of points to unit variance or unit max distance.
+    
+    This removes scale differences by scaling points so they have:
+    - Unit variance (standard deviation = 1), or
+    - Unit max distance (max distance from origin = 1)
+    
+    Args:
+        points: Array of shape (n_points, 2) with (x, y) coordinates
+        method: Scaling method - 'variance' (default) or 'max_distance'
+    
+    Returns:
+        Scaled points array of shape (n_points, 2)
+    """
+    if len(points) == 0:
+        return points
+    
+    points = np.array(points)
+    
+    if method == 'variance':
+        # Scale to unit variance (standard deviation = 1)
+        scale = np.std(points)
+        if scale < 1e-10:  # Avoid division by zero
+            return points
+        scaled = points / scale
+    
+    elif method == 'max_distance':
+        # Scale so that maximum distance from origin is 1
+        distances = np.linalg.norm(points, axis=1)
+        max_dist = np.max(distances)
+        if max_dist < 1e-10:  # Avoid division by zero
+            return points
+        scaled = points / max_dist
+    
+    else:
+        raise ValueError(f"Unknown method: {method}. Use 'variance' or 'max_distance'")
+    
+    return scaled
+
+
 def normalize_points(points: np.ndarray) -> np.ndarray:
     """
     Normalize a set of 2D points for translation, rotation, and scale.
