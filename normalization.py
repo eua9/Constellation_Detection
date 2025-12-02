@@ -6,7 +6,33 @@ rotation, and scale invariance using PCA and centering.
 """
 
 import numpy as np
-from typing import List, Tuple
+from typing import List, Tuple, Optional
+
+
+def center_points(points: np.ndarray) -> np.ndarray:
+    """
+    Center points by subtracting the mean (centroid).
+    
+    This removes translation differences by moving the centroid to the origin.
+    
+    Args:
+        points: Array of shape (n_points, 2) with (x, y) coordinates
+    
+    Returns:
+        Centered points array of shape (n_points, 2) with zero mean
+    """
+    if len(points) == 0:
+        return points
+    
+    points = np.array(points)
+    
+    # Compute centroid (mean)
+    centroid = np.mean(points, axis=0)
+    
+    # Subtract mean to center at origin
+    centered = points - centroid
+    
+    return centered
 
 
 def normalize_points(points: np.ndarray) -> np.ndarray:
