@@ -9,6 +9,7 @@ import numpy as np
 import cv2
 from skimage.feature import blob_log
 from typing import List, Tuple, Optional, Dict, Any
+import matplotlib.pyplot as plt
 
 
 def detect_stars(
@@ -130,4 +131,94 @@ def visualize_detection(
             cv2.circle(vis_image, (int(x), int(y)), 5, (0, 255, 0), 1)
     
     return vis_image
+
+
+def visualize_detections(
+    image: np.ndarray,
+    star_coords: np.ndarray,
+    save_path: Optional[str] = None
+) -> None:
+    """
+    Visualize detected star positions overlaid on the input image using matplotlib.
+    Supports debugging and verification of detection robustness.
+    
+    Args:
+        image: Input grayscale or color image (numpy array)
+        star_coords: NumPy array of shape (N, 2) containing (x, y) star centroid coordinates
+        save_path: Optional path to save the visualization. If None, displays the plot.
+    
+    Returns:
+        None (displays or saves the visualization)
+    """
+    # Ensure image is in the right format for matplotlib
+    if len(image.shape) == 3:
+        # Color image - matplotlib expects RGB, OpenCV uses BGR
+        display_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    else:
+        # Grayscale image
+        display_image = image
+    
+    # Create figure and axis
+    fig, ax = plt.subplots(1, 1, figsize=(10, 10))
+    
+    # Display the image
+    ax.imshow(display_image, cmap='gray' if len(image.shape) == 2 else None)
+    ax.set_title(f'Detected Stars ({len(star_coords)} stars found)', fontsize=14, fontweight='bold')
+    ax.axis('off')
+    
+    # Plot star centroids as markers
+    if len(star_coords) > 0:
+        # Extract x and y coordinates
+        x_coords = star_coords[:, 0]
+        y_coords = star_coords[:, 1]
+        
+        # Plot stars as red circles with white edge for visibility
+        ax.scatter(
+            x_coords, 
+            y_coords,
+            s=100,  # Marker size
+            c='red',
+            marker='o',
+            edgecolors='white',
+            linewidths=1.5,
+            alpha=0.8,
+            label=f'Detected Stars ({len(star_coords)})'
+        )
+        
+        # Add small cross markers at the exact centroid positions for precision
+        ax.scatter(
+            x_coords,
+            y_coords,
+            s=20,
+            c='yellow',
+            marker='+',
+            linewidths=1,
+            label='Centroids'
+        )
+        
+        # Add legend
+        ax.legend(loc='upper right', fontsize=10)
+    else:
+        # No stars detected
+        ax.text(
+            0.5, 0.5,
+            'No stars detected',
+            horizontalalignment='center',
+            verticalalignment='center',
+            transform=ax.transAxes,
+            fontsize=16,
+            color='red',
+            bbox=dict(boxstyle='round', facecolor='white', alpha=0.8)
+        )
+    
+    plt.tight_layout()
+    
+    # Save or display
+    if save_path is not None:
+        plt.savefig(save_path, dpi=150, bbox_inches='tight')
+        print(f"Visualization saved to: {save_path}")
+    else:
+        plt.show()
+    
+    plt.close(fig)
 
