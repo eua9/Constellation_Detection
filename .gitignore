@@ -44,3 +44,10 @@ Thumbs.db
 *.jpeg
 demo_result.png
 
+# Test outputs (visualization images and test results)
+test_outputs/*
+!test_outputs/.gitkeep
+
+# Test inputs (if you add sample images here, uncomment the line below)
+# test_inputs/*
+
