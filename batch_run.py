@@ -149,7 +149,8 @@ def process_batch(
         results.append(result)
         
         # Print result
-        print(f"  Match: {best_match}, Score: {score:.4f if score != float('inf') else 'inf'}, "
+        score_str = f"{score:.4f}" if score != float('inf') else "inf"
+        print(f"  Match: {best_match}, Score: {score_str}, "
               f"Time: {processing_time:.3f}s, Stars: {len(detected_centroids)}")
     
     # Compute summary statistics
