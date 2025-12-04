@@ -12,7 +12,12 @@
   },
   "matching": {
     "no_match_threshold": null,
-    "method": "ssd"
+    "method": "ssd",
+    "ransac": {
+      "inlier_threshold": 0.1,
+      "max_iterations": 1000,
+      "min_inliers": 3
+    }
   },
   "synthetic_data": {
     "image_size": [512, 512],

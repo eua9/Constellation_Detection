@@ -15,7 +15,7 @@ import csv
 
 from star_detection import detect_stars
 from normalization import normalize_star_points
-from matching import match_constellation_ssd, match_constellation_hausdorff, match_constellation
+from matching import match_constellation_ssd, match_constellation_hausdorff, match_constellation_ransac, match_constellation
 from templates import load_templates
 
 
@@ -224,6 +224,17 @@ def evaluate_dataset(
                 templates,
                 no_match_threshold=no_match_threshold
             )
+        elif matching_method == 'ransac':
+            # Get RANSAC parameters from config
+            ransac_config = config.get('ransac_config', {})
+            predicted_label, score = match_constellation_ransac(
+                normalized_query,
+                templates,
+                no_match_threshold=no_match_threshold,
+                inlier_threshold=ransac_config.get('inlier_threshold', 0.1),
+                max_iterations=ransac_config.get('max_iterations', 1000),
+                min_inliers=ransac_config.get('min_inliers', 3)
+            )
         else:
             # Use generic match_constellation function
             predicted_label, score = match_constellation(
@@ -280,60 +291,75 @@ def compare_methods(
     output_path: Optional[str] = None
 ) -> Dict:
     """
-    Compare SSD and Hausdorff matching methods on the same dataset.
+    Compare SSD, Hausdorff, and RANSAC matching methods on the same dataset.
     
-    Runs evaluation with both methods and compares accuracy and confusion matrices.
+    Runs evaluation with all three methods and compares accuracy and confusion matrices.
     
     Args:
         dataset_dir: Directory containing synthetic dataset images and metadata
         templates: Dictionary mapping constellation names to normalized template point arrays
-        config: Configuration dictionary (detection_config, no_match_threshold)
+        config: Configuration dictionary (detection_config, no_match_threshold, ransac_config)
         output_path: Optional path to save comparison results
     
     Returns:
-        Dictionary containing comparison results for both methods
+        Dictionary containing comparison results for all methods
     """
     print("\n" + "=" * 60)
-    print("Method Comparison: SSD vs. Hausdorff")
+    print("Method Comparison: SSD vs. Hausdorff vs. RANSAC")
     print("=" * 60)
     
     # Evaluate with SSD
-    print("\n[1/2] Evaluating with SSD method...")
+    print("\n[1/3] Evaluating with SSD method...")
     config_ssd = config.copy()
     config_ssd['matching_method'] = 'ssd'
     metrics_ssd = evaluate_dataset(dataset_dir, templates, config_ssd)
     
     # Evaluate with Hausdorff
-    print("\n[2/2] Evaluating with Hausdorff method...")
+    print("\n[2/3] Evaluating with Hausdorff method...")
     config_hausdorff = config.copy()
     config_hausdorff['matching_method'] = 'hausdorff'
     metrics_hausdorff = evaluate_dataset(dataset_dir, templates, config_hausdorff)
+    
+    # Evaluate with RANSAC
+    print("\n[3/3] Evaluating with RANSAC method...")
+    config_ransac = config.copy()
+    config_ransac['matching_method'] = 'ransac'
+    metrics_ransac = evaluate_dataset(dataset_dir, templates, config_ransac)
     
     # Print comparison
     print("\n" + "=" * 60)
     print("Comparison Results")
     print("=" * 60)
     
-    print(f"\n{'Metric':<25} {'SSD':<15} {'Hausdorff':<15} {'Difference':<15}")
+    print(f"\n{'Metric':<25} {'SSD':<15} {'Hausdorff':<15} {'RANSAC':<15}")
     print("-" * 70)
     
     acc_ssd = metrics_ssd['accuracy']
     acc_hausdorff = metrics_hausdorff['accuracy']
-    acc_diff = acc_hausdorff - acc_ssd
+    acc_ransac = metrics_ransac['accuracy']
     
-    print(f"{'Accuracy':<25} {acc_ssd:<15.4f} {acc_hausdorff:<15.4f} {acc_diff:+.4f}")
+    print(f"{'Accuracy':<25} {acc_ssd:<15.4f} {acc_hausdorff:<15.4f} {acc_ransac:<15.4f}")
     
     num_valid_ssd = sum(1 for p in metrics_ssd['predictions'] if p is not None)
     num_valid_hausdorff = sum(1 for p in metrics_hausdorff['predictions'] if p is not None)
+    num_valid_ransac = sum(1 for p in metrics_ransac['predictions'] if p is not None)
     
-    print(f"{'Valid Predictions':<25} {num_valid_ssd:<15} {num_valid_hausdorff:<15} {num_valid_hausdorff - num_valid_ssd:+d}")
+    print(f"{'Valid Predictions':<25} {num_valid_ssd:<15} {num_valid_hausdorff:<15} {num_valid_ransac:<15}")
     
     num_correct_ssd = sum(1 for p, gt in zip(metrics_ssd['predictions'], metrics_ssd['ground_truth']) 
                          if p is not None and p == gt)
     num_correct_hausdorff = sum(1 for p, gt in zip(metrics_hausdorff['predictions'], metrics_hausdorff['ground_truth']) 
                                 if p is not None and p == gt)
+    num_correct_ransac = sum(1 for p, gt in zip(metrics_ransac['predictions'], metrics_ransac['ground_truth']) 
+                            if p is not None and p == gt)
     
-    print(f"{'Correct Predictions':<25} {num_correct_ssd:<15} {num_correct_hausdorff:<15} {num_correct_hausdorff - num_correct_ssd:+d}")
+    print(f"{'Correct Predictions':<25} {num_correct_ssd:<15} {num_correct_hausdorff:<15} {num_correct_ransac:<15}")
+    
+    # Determine best method
+    accuracies = {'ssd': acc_ssd, 'hausdorff': acc_hausdorff, 'ransac': acc_ransac}
+    best_method = max(accuracies, key=accuracies.get)
+    
+    print(f"\nBest Method: {best_method.upper()} (Accuracy: {accuracies[best_method]:.4f})")
     
     # Print confusion matrices
     print("\n" + "=" * 60)
@@ -347,6 +373,12 @@ def compare_methods(
     print("=" * 60)
     if metrics_hausdorff['confusion_matrix'] is not None:
         print_confusion_matrix(metrics_hausdorff['confusion_matrix'], metrics_hausdorff['class_names'], "Hausdorff Method")
+    
+    print("\n" + "=" * 60)
+    print("RANSAC Method - Confusion Matrix")
+    print("=" * 60)
+    if metrics_ransac['confusion_matrix'] is not None:
+        print_confusion_matrix(metrics_ransac['confusion_matrix'], metrics_ransac['class_names'], "RANSAC Method")
     
     # Save comparison results
     comparison_results = {
@@ -364,9 +396,21 @@ def compare_methods(
             'confusion_matrix': metrics_hausdorff['confusion_matrix'].tolist() if metrics_hausdorff['confusion_matrix'] is not None else None,
             'class_names': metrics_hausdorff['class_names']
         },
+        'ransac': {
+            'accuracy': acc_ransac,
+            'num_valid': num_valid_ransac,
+            'num_correct': num_correct_ransac,
+            'confusion_matrix': metrics_ransac['confusion_matrix'].tolist() if metrics_ransac['confusion_matrix'] is not None else None,
+            'class_names': metrics_ransac['class_names']
+        },
         'comparison': {
-            'accuracy_difference': acc_diff,
-            'best_method': 'hausdorff' if acc_hausdorff > acc_ssd else 'ssd'
+            'best_method': best_method,
+            'best_accuracy': accuracies[best_method],
+            'accuracy_differences': {
+                'hausdorff_vs_ssd': acc_hausdorff - acc_ssd,
+                'ransac_vs_ssd': acc_ransac - acc_ssd,
+                'ransac_vs_hausdorff': acc_ransac - acc_hausdorff
+            }
         }
     }
     
@@ -514,9 +558,9 @@ def main():
     parser.add_argument(
         '--method',
         type=str,
-        choices=['ssd', 'hausdorff', 'compare'],
+        choices=['ssd', 'hausdorff', 'ransac', 'compare'],
         default='ssd',
-        help='Matching method: ssd (baseline), hausdorff (extended), or compare (both) (default: ssd)'
+        help='Matching method: ssd (baseline), hausdorff (extended), ransac (extended), or compare (all) (default: ssd)'
     )
     
     args = parser.parse_args()
@@ -540,13 +584,18 @@ def main():
             'intensity_threshold': args.detection_threshold
         },
         'no_match_threshold': args.no_match_threshold,
-        'matching_method': args.method
+        'matching_method': args.method,
+        'ransac_config': {
+            'inlier_threshold': 0.1,
+            'max_iterations': 1000,
+            'min_inliers': 3
+        }
     }
     
     # Run evaluation
     if args.method == 'compare':
-        # Compare both methods
-        print(f"\nComparing SSD and Hausdorff methods on dataset: {args.dataset}")
+        # Compare all methods (SSD, Hausdorff, RANSAC)
+        print(f"\nComparing all matching methods on dataset: {args.dataset}")
         try:
             compare_methods(args.dataset, templates, config, args.output)
         except Exception as e:
