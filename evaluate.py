@@ -15,7 +15,7 @@ import csv
 
 from star_detection import detect_stars
 from normalization import normalize_star_points
-from matching import match_constellation_ssd
+from matching import match_constellation_ssd, match_constellation_hausdorff, match_constellation
 from templates import load_templates
 
 
@@ -165,6 +165,7 @@ def evaluate_dataset(
     # Extract detection config
     detection_config = config.get('detection_config', {'intensity_threshold': 0.01})
     no_match_threshold = config.get('no_match_threshold', None)
+    matching_method = config.get('matching_method', 'ssd')
     
     predictions = []
     ground_truth = []
@@ -210,12 +211,26 @@ def evaluate_dataset(
         # Step 2: Normalize detected stars
         normalized_query = normalize_star_points(detected_centroids)
         
-        # Step 3: Match to templates using SSD
-        predicted_label, score = match_constellation_ssd(
-            normalized_query,
-            templates,
-            no_match_threshold=no_match_threshold
-        )
+        # Step 3: Match to templates using selected method
+        if matching_method == 'ssd':
+            predicted_label, score = match_constellation_ssd(
+                normalized_query,
+                templates,
+                no_match_threshold=no_match_threshold
+            )
+        elif matching_method == 'hausdorff':
+            predicted_label, score = match_constellation_hausdorff(
+                normalized_query,
+                templates,
+                no_match_threshold=no_match_threshold
+            )
+        else:
+            # Use generic match_constellation function
+            predicted_label, score = match_constellation(
+                normalized_query,
+                templates,
+                method=matching_method
+            )
         
         # Record results
         predictions.append(predicted_label)
@@ -256,6 +271,112 @@ def evaluate_dataset(
         'class_names': class_names,
         'results': results
     }
+
+
+def compare_methods(
+    dataset_dir: str,
+    templates: Dict[str, np.ndarray],
+    config: Dict,
+    output_path: Optional[str] = None
+) -> Dict:
+    """
+    Compare SSD and Hausdorff matching methods on the same dataset.
+    
+    Runs evaluation with both methods and compares accuracy and confusion matrices.
+    
+    Args:
+        dataset_dir: Directory containing synthetic dataset images and metadata
+        templates: Dictionary mapping constellation names to normalized template point arrays
+        config: Configuration dictionary (detection_config, no_match_threshold)
+        output_path: Optional path to save comparison results
+    
+    Returns:
+        Dictionary containing comparison results for both methods
+    """
+    print("\n" + "=" * 60)
+    print("Method Comparison: SSD vs. Hausdorff")
+    print("=" * 60)
+    
+    # Evaluate with SSD
+    print("\n[1/2] Evaluating with SSD method...")
+    config_ssd = config.copy()
+    config_ssd['matching_method'] = 'ssd'
+    metrics_ssd = evaluate_dataset(dataset_dir, templates, config_ssd)
+    
+    # Evaluate with Hausdorff
+    print("\n[2/2] Evaluating with Hausdorff method...")
+    config_hausdorff = config.copy()
+    config_hausdorff['matching_method'] = 'hausdorff'
+    metrics_hausdorff = evaluate_dataset(dataset_dir, templates, config_hausdorff)
+    
+    # Print comparison
+    print("\n" + "=" * 60)
+    print("Comparison Results")
+    print("=" * 60)
+    
+    print(f"\n{'Metric':<25} {'SSD':<15} {'Hausdorff':<15} {'Difference':<15}")
+    print("-" * 70)
+    
+    acc_ssd = metrics_ssd['accuracy']
+    acc_hausdorff = metrics_hausdorff['accuracy']
+    acc_diff = acc_hausdorff - acc_ssd
+    
+    print(f"{'Accuracy':<25} {acc_ssd:<15.4f} {acc_hausdorff:<15.4f} {acc_diff:+.4f}")
+    
+    num_valid_ssd = sum(1 for p in metrics_ssd['predictions'] if p is not None)
+    num_valid_hausdorff = sum(1 for p in metrics_hausdorff['predictions'] if p is not None)
+    
+    print(f"{'Valid Predictions':<25} {num_valid_ssd:<15} {num_valid_hausdorff:<15} {num_valid_hausdorff - num_valid_ssd:+d}")
+    
+    num_correct_ssd = sum(1 for p, gt in zip(metrics_ssd['predictions'], metrics_ssd['ground_truth']) 
+                         if p is not None and p == gt)
+    num_correct_hausdorff = sum(1 for p, gt in zip(metrics_hausdorff['predictions'], metrics_hausdorff['ground_truth']) 
+                                if p is not None and p == gt)
+    
+    print(f"{'Correct Predictions':<25} {num_correct_ssd:<15} {num_correct_hausdorff:<15} {num_correct_hausdorff - num_correct_ssd:+d}")
+    
+    # Print confusion matrices
+    print("\n" + "=" * 60)
+    print("SSD Method - Confusion Matrix")
+    print("=" * 60)
+    if metrics_ssd['confusion_matrix'] is not None:
+        print_confusion_matrix(metrics_ssd['confusion_matrix'], metrics_ssd['class_names'], "SSD Method")
+    
+    print("\n" + "=" * 60)
+    print("Hausdorff Method - Confusion Matrix")
+    print("=" * 60)
+    if metrics_hausdorff['confusion_matrix'] is not None:
+        print_confusion_matrix(metrics_hausdorff['confusion_matrix'], metrics_hausdorff['class_names'], "Hausdorff Method")
+    
+    # Save comparison results
+    comparison_results = {
+        'ssd': {
+            'accuracy': acc_ssd,
+            'num_valid': num_valid_ssd,
+            'num_correct': num_correct_ssd,
+            'confusion_matrix': metrics_ssd['confusion_matrix'].tolist() if metrics_ssd['confusion_matrix'] is not None else None,
+            'class_names': metrics_ssd['class_names']
+        },
+        'hausdorff': {
+            'accuracy': acc_hausdorff,
+            'num_valid': num_valid_hausdorff,
+            'num_correct': num_correct_hausdorff,
+            'confusion_matrix': metrics_hausdorff['confusion_matrix'].tolist() if metrics_hausdorff['confusion_matrix'] is not None else None,
+            'class_names': metrics_hausdorff['class_names']
+        },
+        'comparison': {
+            'accuracy_difference': acc_diff,
+            'best_method': 'hausdorff' if acc_hausdorff > acc_ssd else 'ssd'
+        }
+    }
+    
+    if output_path:
+        output_file = Path(output_path)
+        with open(output_file, 'w') as f:
+            json.dump(comparison_results, f, indent=2)
+        print(f"\nComparison results saved to {output_file}")
+    
+    return comparison_results
 
 
 def save_metrics(metrics: Dict, output_path: str, format: str = 'json'):
@@ -388,7 +509,14 @@ def main():
         '--no-match-threshold',
         type=float,
         default=None,
-        help='SSD threshold for declaring no match (default: None)'
+        help='Threshold for declaring no match (default: None)'
+    )
+    parser.add_argument(
+        '--method',
+        type=str,
+        choices=['ssd', 'hausdorff', 'compare'],
+        default='ssd',
+        help='Matching method: ssd (baseline), hausdorff (extended), or compare (both) (default: ssd)'
     )
     
     args = parser.parse_args()
@@ -411,11 +539,24 @@ def main():
         'detection_config': {
             'intensity_threshold': args.detection_threshold
         },
-        'no_match_threshold': args.no_match_threshold
+        'no_match_threshold': args.no_match_threshold,
+        'matching_method': args.method
     }
     
     # Run evaluation
-    print(f"\nEvaluating dataset: {args.dataset}")
+    if args.method == 'compare':
+        # Compare both methods
+        print(f"\nComparing SSD and Hausdorff methods on dataset: {args.dataset}")
+        try:
+            compare_methods(args.dataset, templates, config, args.output)
+        except Exception as e:
+            print(f"Error during comparison: {e}")
+            import traceback
+            traceback.print_exc()
+            return 1
+        return 0
+    
+    print(f"\nEvaluating dataset: {args.dataset} (method: {args.method})")
     try:
         metrics = evaluate_dataset(args.dataset, templates, config)
     except Exception as e:
