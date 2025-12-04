@@ -6,7 +6,17 @@ constellation detection performance, including accuracy, confusion matrices, etc
 """
 
 import numpy as np
+import json
+import cv2
+import argparse
+from pathlib import Path
 from typing import List, Dict, Tuple, Optional
+import csv
+
+from star_detection import detect_stars
+from normalization import normalize_star_points
+from matching import match_constellation_ssd
+from templates import load_templates
 
 
 def compute_accuracy(
@@ -108,6 +118,200 @@ def print_confusion_matrix(
     print()
 
 
+def evaluate_dataset(
+    dataset_dir: str,
+    templates: Dict[str, np.ndarray],
+    config: Optional[Dict] = None
+) -> Dict:
+    """
+    Evaluate the full pipeline on a labeled synthetic dataset.
+    
+    Iterates over all images and labels, runs the full pipeline
+    (detection → normalization → SSD matching), and records
+    predicted vs. true constellation labels.
+    
+    Args:
+        dataset_dir: Directory containing synthetic dataset images and metadata
+        templates: Dictionary mapping constellation names to normalized template point arrays
+        config: Optional configuration dictionary with:
+            - 'detection_config': Configuration for star detection
+            - 'no_match_threshold': Optional threshold for declaring no match
+    
+    Returns:
+        Dictionary containing:
+            - 'predictions': List of predicted constellation names
+            - 'ground_truth': List of true constellation names
+            - 'scores': List of SSD scores
+            - 'accuracy': Overall accuracy
+            - 'confusion_matrix': Confusion matrix array
+            - 'class_names': List of class names
+            - 'results': List of (predicted, ground_truth, score) tuples
+    """
+    if config is None:
+        config = {}
+    
+    dataset_path = Path(dataset_dir)
+    if not dataset_path.exists():
+        raise ValueError(f"Dataset directory does not exist: {dataset_dir}")
+    
+    # Find all image files
+    image_files = sorted(list(dataset_path.glob('constellation_*.png')))
+    
+    if len(image_files) == 0:
+        raise ValueError(f"No constellation images found in {dataset_dir}")
+    
+    print(f"Found {len(image_files)} images in dataset")
+    
+    # Extract detection config
+    detection_config = config.get('detection_config', {'intensity_threshold': 0.01})
+    no_match_threshold = config.get('no_match_threshold', None)
+    
+    predictions = []
+    ground_truth = []
+    scores = []
+    results = []
+    
+    # Process each image
+    for i, image_file in enumerate(image_files):
+        # Load corresponding metadata file
+        metadata_file = dataset_path / f"{image_file.stem}_metadata.json"
+        
+        if not metadata_file.exists():
+            print(f"Warning: No metadata found for {image_file.name}, skipping")
+            continue
+        
+        # Load metadata
+        with open(metadata_file, 'r') as f:
+            metadata = json.load(f)
+        
+        true_label = metadata.get('constellation_name')
+        if true_label is None:
+            print(f"Warning: No constellation_name in metadata for {image_file.name}, skipping")
+            continue
+        
+        # Load image
+        image = cv2.imread(str(image_file), cv2.IMREAD_GRAYSCALE)
+        if image is None:
+            print(f"Warning: Could not load image {image_file.name}, skipping")
+            continue
+        
+        # Run full pipeline: detection → normalization → matching
+        # Step 1: Detect stars
+        detected_centroids = detect_stars(image, config=detection_config)
+        
+        if len(detected_centroids) == 0:
+            print(f"Warning: No stars detected in {image_file.name}, skipping")
+            predictions.append(None)
+            ground_truth.append(true_label)
+            scores.append(float('inf'))
+            results.append((None, true_label, float('inf')))
+            continue
+        
+        # Step 2: Normalize detected stars
+        normalized_query = normalize_star_points(detected_centroids)
+        
+        # Step 3: Match to templates using SSD
+        predicted_label, score = match_constellation_ssd(
+            normalized_query,
+            templates,
+            no_match_threshold=no_match_threshold
+        )
+        
+        # Record results
+        predictions.append(predicted_label)
+        ground_truth.append(true_label)
+        scores.append(score)
+        results.append((predicted_label, true_label, score))
+        
+        if (i + 1) % 10 == 0:
+            print(f"Processed {i + 1}/{len(image_files)} images...")
+    
+    # Filter out None predictions for accuracy calculation
+    valid_indices = [i for i, p in enumerate(predictions) if p is not None]
+    if len(valid_indices) == 0:
+        print("Warning: No valid predictions found")
+        return {
+            'predictions': predictions,
+            'ground_truth': ground_truth,
+            'scores': scores,
+            'accuracy': 0.0,
+            'confusion_matrix': None,
+            'class_names': [],
+            'results': results
+        }
+    
+    valid_predictions = [predictions[i] for i in valid_indices]
+    valid_ground_truth = [ground_truth[i] for i in valid_indices]
+    
+    # Compute metrics
+    accuracy = compute_accuracy(valid_predictions, valid_ground_truth)
+    cm, class_names = compute_confusion_matrix(valid_predictions, valid_ground_truth)
+    
+    return {
+        'predictions': predictions,
+        'ground_truth': ground_truth,
+        'scores': scores,
+        'accuracy': accuracy,
+        'confusion_matrix': cm,
+        'class_names': class_names,
+        'results': results
+    }
+
+
+def save_metrics(metrics: Dict, output_path: str, format: str = 'json'):
+    """
+    Save evaluation metrics to a file.
+    
+    Args:
+        metrics: Dictionary containing evaluation metrics
+        output_path: Path where metrics should be saved
+        format: Output format - 'json' or 'csv'
+    """
+    output_file = Path(output_path)
+    
+    if format == 'json':
+        # Prepare JSON-serializable data
+        json_data = {
+            'accuracy': metrics['accuracy'],
+            'num_images': len(metrics['ground_truth']),
+            'num_valid_predictions': sum(1 for p in metrics['predictions'] if p is not None),
+            'class_names': metrics['class_names'],
+            'confusion_matrix': metrics['confusion_matrix'].tolist() if metrics['confusion_matrix'] is not None else None,
+            'per_image_results': [
+                {
+                    'predicted': pred,
+                    'ground_truth': gt,
+                    'score': score
+                }
+                for pred, gt, score in metrics['results']
+            ]
+        }
+        
+        with open(output_file, 'w') as f:
+            json.dump(json_data, f, indent=2)
+        
+        print(f"Metrics saved to {output_file} (JSON format)")
+    
+    elif format == 'csv':
+        # Save confusion matrix as CSV
+        if metrics['confusion_matrix'] is not None:
+            with open(output_file, 'w', newline='') as f:
+                writer = csv.writer(f)
+                # Header row
+                writer.writerow([''] + metrics['class_names'])
+                # Data rows
+                for i, class_name in enumerate(metrics['class_names']):
+                    row = [class_name] + metrics['confusion_matrix'][i].tolist()
+                    writer.writerow(row)
+            
+            print(f"Confusion matrix saved to {output_file} (CSV format)")
+        else:
+            print("Warning: No confusion matrix to save")
+    
+    else:
+        raise ValueError(f"Unknown format: {format}. Use 'json' or 'csv'")
+
+
 def evaluate_on_synthetic_data(
     results: List[Tuple[str, str, float]],
     print_results: bool = True
@@ -141,3 +345,113 @@ def evaluate_on_synthetic_data(
     
     return metrics
 
+
+def main():
+    """
+    Main entry point for evaluation script with CLI support.
+    """
+    parser = argparse.ArgumentParser(
+        description='Evaluate constellation detection pipeline on synthetic dataset'
+    )
+    parser.add_argument(
+        '--dataset',
+        type=str,
+        required=True,
+        help='Path to synthetic dataset directory containing images and metadata'
+    )
+    parser.add_argument(
+        '--templates',
+        type=str,
+        default='templates_config.json',
+        help='Path to template configuration file (default: templates_config.json)'
+    )
+    parser.add_argument(
+        '--output',
+        type=str,
+        default=None,
+        help='Path to save evaluation metrics (JSON format). If not specified, only prints results.'
+    )
+    parser.add_argument(
+        '--output-format',
+        type=str,
+        choices=['json', 'csv'],
+        default='json',
+        help='Output format for metrics file (default: json)'
+    )
+    parser.add_argument(
+        '--detection-threshold',
+        type=float,
+        default=0.01,
+        help='Intensity threshold for star detection (default: 0.01)'
+    )
+    parser.add_argument(
+        '--no-match-threshold',
+        type=float,
+        default=None,
+        help='SSD threshold for declaring no match (default: None)'
+    )
+    
+    args = parser.parse_args()
+    
+    print("=" * 60)
+    print("Constellation Detection Evaluation")
+    print("=" * 60)
+    
+    # Load templates
+    print(f"\nLoading templates from {args.templates}...")
+    try:
+        templates = load_templates(args.templates)
+        print(f"Loaded {len(templates)} templates: {list(templates.keys())}")
+    except Exception as e:
+        print(f"Error loading templates: {e}")
+        return 1
+    
+    # Prepare configuration
+    config = {
+        'detection_config': {
+            'intensity_threshold': args.detection_threshold
+        },
+        'no_match_threshold': args.no_match_threshold
+    }
+    
+    # Run evaluation
+    print(f"\nEvaluating dataset: {args.dataset}")
+    try:
+        metrics = evaluate_dataset(args.dataset, templates, config)
+    except Exception as e:
+        print(f"Error during evaluation: {e}")
+        import traceback
+        traceback.print_exc()
+        return 1
+    
+    # Print results
+    print("\n" + "=" * 60)
+    print("Evaluation Results")
+    print("=" * 60)
+    
+    num_total = len(metrics['ground_truth'])
+    num_valid = sum(1 for p in metrics['predictions'] if p is not None)
+    num_correct = sum(1 for p, gt in zip(metrics['predictions'], metrics['ground_truth']) 
+                     if p is not None and p == gt)
+    
+    print(f"\nTotal images: {num_total}")
+    print(f"Valid predictions: {num_valid}")
+    print(f"Correct predictions: {num_correct}")
+    print(f"Overall Accuracy: {metrics['accuracy']:.4f} ({metrics['accuracy']*100:.2f}%)")
+    
+    if metrics['confusion_matrix'] is not None:
+        print_confusion_matrix(metrics['confusion_matrix'], metrics['class_names'])
+    
+    # Save metrics if output path specified
+    if args.output:
+        save_metrics(metrics, args.output, format=args.output_format)
+    
+    print("=" * 60)
+    print("Evaluation completed!")
+    print("=" * 60)
+    
+    return 0
+
+
+if __name__ == '__main__':
+    exit(main())
