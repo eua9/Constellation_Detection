@@ -189,7 +189,7 @@ def generate_dataset(
     if len(templates) == 0:
         raise ValueError("Cannot generate dataset: no templates provided")
     
-    # Set random seed if provided
+    # Set random seed if provided (only once at the beginning)
     if random_seed is not None:
         np.random.seed(random_seed)
     
@@ -207,11 +207,13 @@ def generate_dataset(
     
     # Generate each image
     for i in range(num_images):
-        # Sample a random template
+        # Sample a random template (random state advances naturally)
         template_name = np.random.choice(template_names)
         template_points = templates[template_name]
         
         # Prepare parameters for generate_constellation_instance
+        # Don't pass random_seed - let the random state advance naturally
+        # This ensures each image gets different random transformations
         instance_params = {
             'rotation_range': config.get('rotation_range'),
             'scale_range': config.get('scale_range'),
@@ -219,7 +221,7 @@ def generate_dataset(
             'noise_std': config.get('noise_std', 0.0),
             'remove_prob': config.get('remove_prob', 0.0),
             'image_size': image_size,
-            'random_seed': random_seed  # Will be None or set value
+            'random_seed': None  # Don't reset seed - let random state advance
         }
         
         # Generate transformed coordinates

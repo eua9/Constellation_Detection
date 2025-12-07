@@ -12,10 +12,10 @@ import matplotlib.pyplot as plt
 from typing import Optional, Tuple
 
 from star_detection import detect_stars, visualize_detection
-from normalization import normalize_star_points
-from matching import match_constellation_ssd
+from normalization import normalize_star_points, normalize_star_set
+from matching import match_constellation_ssd, match_constellation
 from templates import load_templates
-from synthetic_data import generate_synthetic_image, get_sample_templates
+from synthetic_data import generate_constellation_instance, render_star_image
 from evaluate import evaluate_on_synthetic_data
 
 
@@ -27,14 +27,12 @@ def main():
     print("Constellation Detection System - Demo")
     print("=" * 60)
     
-    # Load sample templates
-    templates = get_sample_templates()
+    # Load templates
+    templates = load_templates('templates_config.json')
     print(f"\nLoaded {len(templates)} templates: {list(templates.keys())}")
     
-    # Normalize templates (they should be normalized for matching)
-    normalized_templates = {}
-    for name, points in templates.items():
-        normalized_templates[name] = normalize_star_set(points)
+    # Templates are already normalized, so we can use them directly
+    normalized_templates = templates
     
     # Generate a test synthetic image
     print("\nGenerating synthetic test image...")
@@ -42,14 +40,27 @@ def main():
     test_template = templates[test_template_name]
     
     # Create synthetic image with some transformations
-    synthetic_image, transformed_points = generate_synthetic_image(
-        test_template,
-        image_size=(512, 512),
-        rotation_angle=45.0,
-        scale_factor=10.0,
-        translation=(20, -10),
-        noise_level=1.0,
-        random_seed=42
+    # First generate transformed coordinates
+    params = {
+        'rotation_range': None,  # Use specific angle instead
+        'rotation_angle': 45.0,
+        'scale_range': None,  # Use specific scale instead
+        'scale_factor': 10.0,
+        'translation_range': None,  # Use specific translation instead
+        'translation': (20, -10),
+        'noise_std': 1.0,
+        'remove_prob': 0.0,  # Don't remove stars for demo
+        'image_size': (512, 512),
+        'random_seed': 42
+    }
+    transformed_points = generate_constellation_instance(test_template, params)
+    
+    # Then render the image
+    synthetic_image = render_star_image(
+        transformed_points,
+        (512, 512),
+        star_radius=2,
+        noise_settings=None
     )
     
     print(f"Generated synthetic image based on '{test_template_name}' template")
@@ -64,7 +75,7 @@ def main():
     
     # Normalize detected stars
     print("\nNormalizing detected stars...")
-    normalized_query = normalize_star_set(detected_centroids)
+    normalized_query = normalize_star_points(detected_centroids)
     print(f"Normalized {len(normalized_query)} star positions")
     
     # Match to templates
