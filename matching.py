@@ -449,10 +449,11 @@ def match_constellation_ransac(
     best_match = None
     best_score = float('inf')
     best_num_inliers = 0
+    best_error = float('inf')
     
     # Compute RANSAC score for each template
     for constellation_name, template_points in templates.items():
-        score, num_inliers, _ = compute_ransac_score(
+        error_score, num_inliers, _ = compute_ransac_score(
             query_points,
             template_points,
             inlier_threshold=inlier_threshold,
@@ -462,21 +463,24 @@ def match_constellation_ransac(
         )
         
         # Prefer matches with more inliers, then lower error
-        # Score is negative num_inliers (so more inliers = lower score = better)
-        # Then add normalized error as tiebreaker
+        # Use combined score for comparison, but return the error score
         if num_inliers >= min_inliers:
             # Combined score: prioritize inlier count, then error
-            # Lower score is better
-            combined_score = -num_inliers * 1000 + score
+            # Lower score is better: -num_inliers * 1000 makes more inliers = lower (better) score
+            combined_score = -num_inliers * 1000 + error_score
             
-            if combined_score < best_score or (num_inliers > best_num_inliers and score < float('inf')):
-                best_score = combined_score
+            # Update if this is better (more inliers OR same inliers with lower error)
+            if (num_inliers > best_num_inliers) or \
+               (num_inliers == best_num_inliers and error_score < best_error) or \
+               (best_num_inliers == 0 and error_score < float('inf')):
+                best_score = combined_score  # For comparison
+                best_error = error_score  # For return value
                 best_match = constellation_name
                 best_num_inliers = num_inliers
     
-    # Check if best score exceeds threshold
-    if no_match_threshold is not None and best_score > no_match_threshold:
-        return None, best_score
+    # Check if best score exceeds threshold (use error, not combined score)
+    if no_match_threshold is not None and best_error > no_match_threshold:
+        return None, best_error
     
-    return best_match, best_score
+    return best_match, best_error
 
