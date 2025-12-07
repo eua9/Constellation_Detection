@@ -232,13 +232,23 @@ def evaluate_dataset(
         elif matching_method == 'ransac':
             # Get RANSAC parameters from config
             ransac_config = config.get('ransac_config', {})
+            # Load from config.json if available, otherwise use defaults
+            import json as json_module
+            try:
+                with open('config.json', 'r') as f:
+                    full_config = json_module.load(f)
+                    ransac_params = full_config.get('matching', {}).get('ransac', {})
+                    ransac_config = {**ransac_config, **ransac_params}  # Merge with any provided config
+            except:
+                pass  # Use defaults if config.json not available
+            
             predicted_label, score = match_constellation_ransac(
                 normalized_query,
                 templates,
                 no_match_threshold=no_match_threshold,
-                inlier_threshold=ransac_config.get('inlier_threshold', 0.1),
-                max_iterations=ransac_config.get('max_iterations', 1000),
-                min_inliers=ransac_config.get('min_inliers', 3)
+                inlier_threshold=ransac_config.get('inlier_threshold', 0.3),
+                max_iterations=ransac_config.get('max_iterations', 2000),
+                min_inliers=ransac_config.get('min_inliers', 2)
             )
         else:
             # Use generic match_constellation function

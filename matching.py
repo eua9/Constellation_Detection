@@ -448,6 +448,7 @@ def match_constellation_ransac(
     
     best_match = None
     best_score = float('inf')
+    best_num_inliers = 0
     
     # Compute RANSAC score for each template
     for constellation_name, template_points in templates.items():
@@ -460,10 +461,18 @@ def match_constellation_ransac(
             random_seed=random_seed
         )
         
-        # Only consider matches with sufficient inliers
-        if num_inliers >= min_inliers and score < best_score:
-            best_score = score
-            best_match = constellation_name
+        # Prefer matches with more inliers, then lower error
+        # Score is negative num_inliers (so more inliers = lower score = better)
+        # Then add normalized error as tiebreaker
+        if num_inliers >= min_inliers:
+            # Combined score: prioritize inlier count, then error
+            # Lower score is better
+            combined_score = -num_inliers * 1000 + score
+            
+            if combined_score < best_score or (num_inliers > best_num_inliers and score < float('inf')):
+                best_score = combined_score
+                best_match = constellation_name
+                best_num_inliers = num_inliers
     
     # Check if best score exceeds threshold
     if no_match_threshold is not None and best_score > no_match_threshold:

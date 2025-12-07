@@ -14,9 +14,9 @@
     "no_match_threshold": null,
     "method": "ssd",
     "ransac": {
-      "inlier_threshold": 0.1,
-      "max_iterations": 1000,
-      "min_inliers": 3
+      "inlier_threshold": 0.3,
+      "max_iterations": 2000,
+      "min_inliers": 2
     }
   },
   "synthetic_data": {
