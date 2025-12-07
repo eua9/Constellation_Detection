@@ -70,9 +70,9 @@ def main():
     # Detect stars in the synthetic image
     print("\nDetecting stars in image...")
     detection_config = {
-        'intensity_threshold': 0.1,  # Higher threshold to reduce false positives
-        'min_sigma': 1.5,  # Filter out very small blobs
-        'max_sigma': 10.0  # Limit maximum blob size
+        'intensity_threshold': 0.05,  # Balanced threshold
+        'min_sigma': 1.0,
+        'max_sigma': 15.0
     }
     detected_centroids = detect_stars(synthetic_image, config=detection_config)
     print(f"Detected {len(detected_centroids)} stars")
@@ -157,9 +157,9 @@ def run_pipeline(
     # Step 2: Detect stars (FR2)
     if detection_config is None:
         detection_config = {
-            'intensity_threshold': 0.1,  # Higher threshold to reduce false positives
-            'min_sigma': 1.5,
-            'max_sigma': 10.0
+            'intensity_threshold': 0.05,  # Balanced threshold
+            'min_sigma': 1.0,
+            'max_sigma': 15.0
         }
     
     detected_centroids = detect_stars(image, config=detection_config)

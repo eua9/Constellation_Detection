@@ -163,11 +163,11 @@ def evaluate_dataset(
     print(f"Found {len(image_files)} images in dataset")
     
     # Extract detection config
-    # Use higher threshold to avoid detecting noise/clutter as stars
+    # Balanced threshold to detect real stars while avoiding noise
     detection_config = config.get('detection_config', {
-        'intensity_threshold': 0.1,
-        'min_sigma': 1.5,
-        'max_sigma': 10.0
+        'intensity_threshold': 0.05,
+        'min_sigma': 1.0,
+        'max_sigma': 15.0
     })
     no_match_threshold = config.get('no_match_threshold', None)
     matching_method = config.get('matching_method', 'ssd')
@@ -551,8 +551,8 @@ def main():
     parser.add_argument(
         '--detection-threshold',
         type=float,
-        default=0.1,
-        help='Intensity threshold for star detection (default: 0.1, higher = fewer false positives)'
+        default=0.05,
+        help='Intensity threshold for star detection (default: 0.05, balance between detecting stars and avoiding noise)'
     )
     parser.add_argument(
         '--no-match-threshold',
