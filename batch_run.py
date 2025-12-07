@@ -76,8 +76,13 @@ def process_batch(
     print(f"Loaded {len(templates)} templates")
     
     # Set default detection config if not provided
+    # Use higher threshold to avoid detecting noise/clutter as stars
     if detection_config is None:
-        detection_config = {'intensity_threshold': 0.01}
+        detection_config = {
+            'intensity_threshold': 0.1,  # Higher threshold to reduce false positives
+            'min_sigma': 1.5,  # Filter out very small blobs (noise)
+            'max_sigma': 10.0  # Limit maximum blob size
+        }
     
     # Process each image
     results = []
@@ -252,8 +257,8 @@ def main():
     parser.add_argument(
         '--detection-threshold',
         type=float,
-        default=0.01,
-        help='Intensity threshold for star detection (default: 0.01)'
+        default=0.1,
+        help='Intensity threshold for star detection (default: 0.1, higher = fewer false positives)'
     )
     parser.add_argument(
         '--no-overlays',
