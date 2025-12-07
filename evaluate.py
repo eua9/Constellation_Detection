@@ -224,10 +224,12 @@ def evaluate_dataset(
                 no_match_threshold=no_match_threshold
             )
         elif matching_method == 'hausdorff':
+            # Use modified Hausdorff with 90th percentile to handle clutter stars
             predicted_label, score = match_constellation_hausdorff(
                 normalized_query,
                 templates,
-                no_match_threshold=no_match_threshold
+                no_match_threshold=no_match_threshold,
+                percentile=90.0  # Use 90th percentile to ignore worst 10% outliers
             )
         elif matching_method == 'ransac':
             # Get RANSAC parameters from config

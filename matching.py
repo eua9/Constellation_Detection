@@ -126,24 +126,27 @@ def match_constellation(
 
 def compute_hausdorff_distance(
     query_points: np.ndarray,
-    template_points: np.ndarray
+    template_points: np.ndarray,
+    percentile: float = 90.0
 ) -> float:
     """
-    Compute Hausdorff distance between two point sets.
+    Compute modified Hausdorff distance between two point sets.
     
-    The Hausdorff distance is the maximum of:
-    - Directed Hausdorff from query to template: max over query points of min distance to template
-    - Directed Hausdorff from template to query: max over template points of min distance to query
+    Uses percentile instead of maximum to be more robust to outliers (clutter stars).
+    The modified Hausdorff distance is the maximum of:
+    - Modified directed Hausdorff from query to template: percentile over query points of min distance to template
+    - Modified directed Hausdorff from template to query: percentile over template points of min distance to query
     
-    This is a symmetric distance metric that measures how far two point sets are from each other.
+    This is more robust to outliers than standard Hausdorff distance.
     Lower values indicate better matches.
 
     Args:
         query_points: Normalized query points of shape (n_query, 2)
         template_points: Normalized template points of shape (n_template, 2)
+        percentile: Percentile to use instead of maximum (default: 90.0 for 90th percentile)
 
     Returns:
-        Hausdorff distance (lower is better match). Returns inf if either set is empty.
+        Modified Hausdorff distance (lower is better match). Returns inf if either set is empty.
     """
     if len(query_points) == 0 or len(template_points) == 0:
         return float('inf')
@@ -153,34 +156,47 @@ def compute_hausdorff_distance(
     distances = np.sqrt(((query_points[:, np.newaxis, :] - 
                          template_points[np.newaxis, :, :]) ** 2).sum(axis=2))
     
-    # Directed Hausdorff from query to template:
-    # For each query point, find minimum distance to any template point, then take max
-    h_query_to_template = np.max(np.min(distances, axis=1))
+    # Modified directed Hausdorff from query to template:
+    # For each query point, find minimum distance to any template point
+    min_distances_query = np.min(distances, axis=1)
+    # Use percentile instead of max to ignore worst outliers
+    if len(min_distances_query) > 0:
+        h_query_to_template = np.percentile(min_distances_query, percentile)
+    else:
+        h_query_to_template = float('inf')
     
-    # Directed Hausdorff from template to query:
-    # For each template point, find minimum distance to any query point, then take max
-    h_template_to_query = np.max(np.min(distances, axis=0))
+    # Modified directed Hausdorff from template to query:
+    # For each template point, find minimum distance to any query point
+    min_distances_template = np.min(distances, axis=0)
+    # Use percentile instead of max to ignore worst outliers
+    if len(min_distances_template) > 0:
+        h_template_to_query = np.percentile(min_distances_template, percentile)
+    else:
+        h_template_to_query = float('inf')
     
-    # Symmetric Hausdorff distance is the maximum of the two directed distances
+    # Symmetric modified Hausdorff distance is the maximum of the two directed distances
     return max(h_query_to_template, h_template_to_query)
 
 
 def match_constellation_hausdorff(
     query_points: np.ndarray,
     templates: Dict[str, np.ndarray],
-    no_match_threshold: Optional[float] = None
+    no_match_threshold: Optional[float] = None,
+    percentile: float = 90.0
 ) -> Tuple[Optional[str], float]:
     """
-    Match a normalized query point set to the best-matching template using Hausdorff distance.
+    Match a normalized query point set to the best-matching template using modified Hausdorff distance.
     
-    This is an extended matching method (FR6.1) that uses Hausdorff distance instead of SSD.
-    Hausdorff distance is more robust to outliers and can handle point sets of different sizes.
+    This is an extended matching method (FR6.1) that uses modified Hausdorff distance instead of SSD.
+    Modified Hausdorff distance uses percentiles instead of maximum, making it more robust to outliers
+    (clutter stars) than standard Hausdorff distance.
 
     Args:
         query_points: Normalized query points of shape (n_query, 2)
         templates: Dictionary mapping constellation names to normalized template points
         no_match_threshold: Optional threshold to declare "no match". If all Hausdorff distances
                           exceed this threshold, returns (None, best_score).
+        percentile: Percentile to use for modified Hausdorff (default: 90.0, higher = more robust to outliers)
 
     Returns:
         Tuple of (best_matching_constellation_name, score).
@@ -195,9 +211,9 @@ def match_constellation_hausdorff(
     best_match = None
     best_score = float('inf')
     
-    # Compute Hausdorff distance for each template
+    # Compute modified Hausdorff distance for each template
     for constellation_name, template_points in templates.items():
-        score = compute_hausdorff_distance(query_points, template_points)
+        score = compute_hausdorff_distance(query_points, template_points, percentile=percentile)
         
         if score < best_score:
             best_score = score
