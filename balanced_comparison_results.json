@@ -1,0 +1,98 @@
+{
+  "ssd": {
+    "accuracy": 0.98,
+    "num_valid": 50,
+    "num_correct": 49,
+    "confusion_matrix": [
+      [
+        0,
+        1
+      ],
+      [
+        0,
+        49
+      ]
+    ],
+    "class_names": [
+      "Line",
+      "Orion"
+    ]
+  },
+  "hausdorff": {
+    "accuracy": 0.98,
+    "num_valid": 50,
+    "num_correct": 49,
+    "confusion_matrix": [
+      [
+        0,
+        1
+      ],
+      [
+        0,
+        49
+      ]
+    ],
+    "class_names": [
+      "Line",
+      "Orion"
+    ]
+  },
+  "ransac": {
+    "accuracy": 0.14,
+    "num_valid": 50,
+    "num_correct": 7,
+    "confusion_matrix": [
+      [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        1,
+        0,
+        0
+      ],
+      [
+        5,
+        9,
+        13,
+        6,
+        16
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0
+      ]
+    ],
+    "class_names": [
+      "Big Dipper",
+      "L-Shape",
+      "Line",
+      "Orion",
+      "Triangle"
+    ]
+  },
+  "comparison": {
+    "best_method": "ssd",
+    "best_accuracy": 0.98,
+    "accuracy_differences": {
+      "hausdorff_vs_ssd": 0.0,
+      "ransac_vs_ssd": -0.84,
+      "ransac_vs_hausdorff": -0.84
+    }
+  }
+}
